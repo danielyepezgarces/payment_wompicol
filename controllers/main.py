@@ -6,7 +6,7 @@ import json
 from odoo import http
 from odoo.http import request
 from odoo.http import Response
-from odoo.addons.payment.models.payment_acquirer import ValidationError
+from odoo.exceptions import ValidationError
 
 _logger = logging.getLogger(__name__)
 
@@ -57,9 +57,9 @@ class WompiColController(http.Controller):
                 raise ValidationError('Wompicol: should not receive "noconfirm" on the controller')
 
             # Process the data
-            request.env['payment.transaction'].sudo().form_feedback(
-                    post,
-                    'wompicol')
+            request.env['payment.transaction'].sudo()._handle_notification_data(
+                    'wompicol',
+                    post)
         else:
             _logger.info(
                 'Wompicol: for feedback entered with incomplete data %s',
@@ -88,4 +88,4 @@ class WompiColController(http.Controller):
                     'payment.transaction'
                     ].sudo()._wompicol_get_data_manually(id, env)
 
-        return werkzeug.utils.redirect('/payment/process')
+        return werkzeug.utils.redirect('/payment/status')

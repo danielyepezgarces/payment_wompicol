@@ -11,26 +11,20 @@
             <field name="image" type="base64" file="payment_wompicol/static/src/img/pse.png"/>
         </record>
 
-        <record id="payment_acquirer_wompicol" model="payment.acquirer">
+        <record id="payment_provider_wompicol" model="payment.provider">
             <field name="name">Wompi Colombia (Bancolombia)</field>
             <field name="image_128" type="base64" file="payment_wompicol/static/src/img/wompicol_icon.png"/>
-            <field name="provider">wompicol</field>
+            <field name="code">wompicol</field>
             <field name="company_id" ref="base.main_company"/>
-            <field name="view_template_id" ref="wompicol_form"/>
-            <field name="state">test</field>
+            <field name="state">disabled</field>
+            <field name="is_published">False</field>
             <field name="wompicol_public_key">public_key</field>
             <field name="wompicol_private_key">private_key</field>
             <field name="wompicol_test_public_key">test_public_key</field>
             <field name="wompicol_test_private_key">test_private_key</field>
-            <field name="description" type="html">
-                <p>
-                    A payment gateway to accept online payments via credit cards, debit cards, bank transfers, Nequi, and others, only available in Colombia, Provided by Bancolombia
-                </p>
-                    <ul class="list-inline">
-                        <li class="list-inline-item"><i class="fa fa-check"/>Online Payment</li>
-                        <li class="list-inline-item"><i class="fa fa-check"/>Payment Status Tracking</li>
-                    </ul>
-            </field>
+            <field name="allow_tokenization">False</field>
+            <field name="support_manual_capture">False</field>
+            <field name="support_refund">False</field>
             <field name="payment_icon_ids" eval='[(6, 0, [
                 ref("payment_icon_wompicol"),
                 ref("payment_icon_pse_ach"),
