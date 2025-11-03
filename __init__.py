@@ -1,3 +1,9 @@
 from . import controllers
 from . import models
-from odoo.addons.payment.models.payment_acquirer import create_missing_journal_for_acquirers
+
+
+def post_init_hook(env):
+    """Post-init hook to ensure payment provider is properly set up."""
+    # In Odoo 19, journal creation is handled differently
+    # This hook can be used for any custom initialization if needed
+    pass

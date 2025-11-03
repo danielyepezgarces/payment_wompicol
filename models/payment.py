@@ -10,43 +10,43 @@ from hashlib import md5
 from werkzeug import urls
 
 from odoo import api, fields, models, _
-from odoo.addons.payment.models.payment_acquirer import ValidationError
+from odoo.exceptions import ValidationError
 from odoo.tools.float_utils import float_compare
 
 
 _logger = logging.getLogger(__name__)
 
 
-class PaymentAcquirerWompicol(models.Model):
-    _inherit = 'payment.acquirer'
+class PaymentProviderWompicol(models.Model):
+    _inherit = 'payment.provider'
 
-    # This fields are what's needed to configure the payment acquirer
+    # This fields are what's needed to configure the payment provider
     # These are extensions, there is a field state, which can be 'enabled'
     # 'test' or 'disabled' in this case, 'enabled' is 'prod'.
-    provider = fields.Selection(selection_add=[('wompicol', 'Wompi Colombia')])
+    code = fields.Selection(selection_add=[('wompicol', 'Wompi Colombia')], ondelete={'wompicol': 'set default'})
     wompicol_private_key = fields.Char(
             string="Wompi Colombia Private API Key",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user'
             )
     wompicol_public_key = fields.Char(
             string="Wompi Colombia Public API Key",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user'
             )
     wompicol_test_private_key = fields.Char(
             string="Wompi Colombia Test Private API Key",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user'
             )
     wompicol_test_public_key = fields.Char(
             string="Wompi Colombia Test Public API Key",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user'
             )
     wompicol_event_url = fields.Char(
             string="Wompi Colombia URL de Eventos",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user',
             readonly=True,
             store=False,
@@ -54,7 +54,7 @@ class PaymentAcquirerWompicol(models.Model):
             )
     wompicol_test_event_url = fields.Char(
             string="Wompi Colombia URL Test de Eventos",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user',
             readonly=True,
             store=False,
@@ -65,7 +65,7 @@ class PaymentAcquirerWompicol(models.Model):
         """Set the urls to config in the wompi console"""
         prod_url = ''
         test_url = ''
-        if self.provider == 'wompicol':
+        if self.code == 'wompicol':
             base_url = self.env[
                     'ir.config_parameter'
                     ].sudo().get_param('web.base.url')
@@ -107,40 +107,45 @@ class PaymentAcquirerWompicol(models.Model):
             test_pub = self.wompicol_test_public_key
             return(test_prv, test_pub)
 
-    def wompicol_form_generate_values(self, values):
+    def _get_specific_rendering_values(self, processing_values):
+        """ Override of payment to return Wompi-specific rendering values.
+        
+        Note: self.ensure_one() from `_get_rendering_values`
+        
+        :param dict processing_values: The processing values of the transaction
+        :return: The dict of provider-specific rendering values
+        :rtype: dict
+        """
+        res = super()._get_specific_rendering_values(processing_values)
+        
+        if self.code != 'wompicol':
+            return res
+            
         # The base url
         base_url = self.env[
                 'ir.config_parameter'
                 ].sudo().get_param('web.base.url')
-        # Get the payment transaction
-        tx = self.env[
-                'payment.transaction'
-                ].search([('reference', '=', values.get('reference'))])
-
-        if values['currency'].name != 'COP':
-            error_msg = (
-                _('WompiCol: Only accepts COP as the currency, received')
-                % (values['currency'].name))
+        
+        # Get currency
+        currency = processing_values.get('currency')
+        if currency and currency.name != 'COP':
+            error_msg = _('WompiCol: Only accepts COP as the currency, received %s') % (currency.name)
             raise ValidationError(error_msg)
 
-        wompiref = f"{tx.reference}_{int(random.random() * 1000)}"
+        reference = processing_values.get('reference')
+        amount = processing_values.get('amount')
+        wompiref = f"{reference}_{int(random.random() * 1000)}"
 
-        wompicol_tx_values = dict(
-            values,
-            publickey=self._get_keys()[1],
-            currency='COP',
+        rendering_values = {
+            'publickey': self._get_keys()[1],
+            'currency': 'COP',
             # Wompi wants cents (*100) and has to end on 00.
-            amountcents=math.ceil(values['amount']) * 100,
-            referenceCode=wompiref,
-            redirectUrl=urls.url_join(base_url, '/payment/wompicol/client_return'),
-        )
-        return wompicol_tx_values
-
-    def wompicol_get_form_action_url(self):
-        '''This method gets called by odoo and should return the url
-        of to action the form data on button press'''
-        self.ensure_one()
-        return self._get_wompicol_urls()
+            'amountcents': math.ceil(amount) * 100,
+            'referenceCode': wompiref,
+            'redirectUrl': urls.url_join(base_url, '/payment/wompicol/client_return'),
+            'api_url': self._get_wompicol_urls(),
+        }
+        return rendering_values
 
 
 class PaymentTransactionWompiCol(models.Model):
@@ -153,12 +158,12 @@ class PaymentTransactionWompiCol(models.Model):
         if id:
             tx = self.env[
                     'payment.transaction'
-                    ].search([('acquirer_reference', '=', id)])
+                    ].search([('provider_reference', '=', id)])
             if len(tx):
                 _logger.info("Wompicol: Not getting data manually, transaction already updated.")
                 return
 
-        api_url = self.acquirer_id._get_wompicol_api_url(environment)
+        api_url = self.provider_id._get_wompicol_api_url(environment)
         request_url = f"{api_url}/transactions/{id}"
         wompi_data = requests.get(request_url, timeout=60)
         # If request succesful
@@ -180,8 +185,8 @@ class PaymentTransactionWompiCol(models.Model):
             # If the transaction is a test.
             if environment == 'test':
                 wompi_data["test"] = True
-            _logger.info("Wompicol: creating transaction manually, by calling the api for acquirer reference %s" % id)
-            self.env['payment.transaction'].sudo().form_feedback(wompi_data, 'wompicol')
+            _logger.info("Wompicol: creating transaction manually, by calling the api for provider reference %s" % id)
+            self.env['payment.transaction'].sudo()._handle_notification_data('wompicol', wompi_data)
 
     def _wompicol_confirm_event(self, data):
         """Wompi doesn't send anything to validate the event is
@@ -230,7 +235,7 @@ class PaymentTransactionWompiCol(models.Model):
         # Data posted to the server
         tx_data = data.get('data').get('transaction')
         # Get the api url
-        api_url = self.acquirer_id._get_wompicol_api_url(data.get('test'))
+        api_url = self.provider_id._get_wompicol_api_url(data.get('test'))
         # Format the url
         request_url = f"{api_url}/transactions/{tx_data.get('id')}"
         # ask for the data
@@ -259,9 +264,19 @@ class PaymentTransactionWompiCol(models.Model):
             return False
 
     @api.model
-    def _wompicol_form_get_tx_from_data(self, data):
-        """ Given a data dict coming from wompicol, verify it
-        and find the related transaction record. """
+    def _get_tx_from_notification_data(self, provider_code, notification_data):
+        """ Override of payment to find the transaction based on Wompi data.
+
+        :param str provider_code: The code of the provider that handled the transaction
+        :param dict notification_data: The notification data sent by the provider
+        :return: The transaction if found
+        :rtype: recordset of `payment.transaction`
+        :raise: ValidationError if the data match no transaction
+        """
+        tx = super()._get_tx_from_notification_data(provider_code, notification_data)
+        if provider_code != 'wompicol' or len(tx) == 1:
+            return tx
+
         # Example Data dict comming from wompicol
         # {
         #   "event": "transaction.updated",
@@ -284,106 +299,70 @@ class PaymentTransactionWompiCol(models.Model):
         # }
 
         # Important fields to recognize the transaction
-        tx_data = data.get('data').get('transaction')
+        tx_data = notification_data.get('data').get('transaction')
         reference = tx_data.get('reference')
         txnid = tx_data.get('id')
 
         if not reference or not txnid:
             raise ValidationError(_('WompiCol: received data with missing reference: (%s) or transaction id: (%s)') % (reference, txnid))
 
-        transaction = self.search([('reference', '=', reference)])
+        tx = self.search([('reference', '=', reference), ('provider_code', '=', 'wompicol')])
 
-        if not transaction:
+        if not tx:
             error_msg = (_('WompiCol: received data for reference: %s; no order found') % (reference))
             raise ValidationError(error_msg)
-        elif len(transaction) > 1:
+        elif len(tx) > 1:
             error_msg = (_('WompiCol: received data for reference: %s; multiple orders found') % (reference))
             raise ValidationError(error_msg)
         else:
-            _logger.info('WompiCol: received reference: %s transaction id found: %s' % (reference, transaction.id))
+            _logger.info('WompiCol: received reference: %s transaction id found: %s' % (reference, tx.id))
 
-        return transaction
+        return tx
 
-    def _wompicol_form_get_invalid_parameters(self, data):
-        """ Given a data dict coming from wompicol, verify it and
-        return any invalid parameters, to stop the processing of the
-        transaction and log it."""
-        invalid_parameters = []
-        tx_data = data.get('data').get('transaction')
+    def _process_notification_data(self, notification_data):
+        """ Override of payment to process the transaction based on Wompi data.
 
-        # If amount to pay don't match
-        # Wompi wants cents (*100) and has to end on 00.
-        amount_in_cents = math.ceil(self.amount) * 100
-        if int(tx_data.get('amount_in_cents', '0')) != amount_in_cents:
-            invalid_parameters.append(('Amount',
-                                       tx_data.get('amount_in_cents'), '%'
-                                       % amount_in_cents))
+        Note: self.ensure_one()
 
-        # If the id from wompi and the id set existing doesn't match
-        # this is maínly for transaction updates.
-        if self.acquirer_reference and tx_data.get('id') \
-           != self.acquirer_reference:
-            invalid_parameters.append(('Reference code',
-                                       tx_data.get('id'),
-                                       self.acquirer_reference))
-
-        if not invalid_parameters:
-            _logger.info('Wompicol: tx %s: has no invalid parameters'
-                         % (self.reference))
-
-        return invalid_parameters
-
-    def _wompicol_form_validate(self, data):
-        """ Given a data dict coming from wompicol, that has an
-        existing payment transaction associated with it, and has
-        passed the _wompicol_form_get_invalid_parameters set the
-        state of the transaction."""
-
-        # Make sure this method is run agains only one record
-        self.ensure_one()
+        :param dict notification_data: The notification data sent by the provider
+        :return: None
+        """
+        super()._process_notification_data(notification_data)
+        if self.provider_code != 'wompicol':
+            return
 
         # Simplify data access
-        tx_data = data.get('data').get('transaction')
+        tx_data = notification_data.get('data').get('transaction')
         status = tx_data.get('status')
 
         # Check if the data received matches what's in wompi servers
         # Do not do it if running and odoo test, or if the data was
         # queried, not received.
-        if not data.get('noconfirm', False):
-            self._wompicol_confirm_event(data)
+        if not notification_data.get('noconfirm', False):
+            self._wompicol_confirm_event(notification_data)
 
-        res = {
-            'acquirer_reference': tx_data.get('id'),  # Wompi internal id
-            'state_message': f"Wompicol states the transactions as {status}"
-        }
-
-        # If came from the test endpoint
-        if data.get('test'):
-            res["state_message"] = 'TEST TRANSACTION: ' + res["state_message"]
-
+        # Update provider reference
+        self.provider_reference = tx_data.get('id')  # Wompi internal id
+        
+        # Build state message
+        state_message = f"Wompicol states the transactions as {status}"
+        if notification_data.get('test'):
+            state_message = 'TEST TRANSACTION: ' + state_message
+        
         if status == 'APPROVED':
             _logger.info('Validated WompiCol payment for tx %s: setting as done' % (self.reference))
-            res.update(state='done', date=fields.Datetime.now())
-            self._set_transaction_done()
-            # Takes care of setting the order as paid right away
-            self.write(res)
-            self.execute_callback()
-            if not self.is_processed:
-                self._post_process_after_done()
-            return True
+            self._set_done()
+            self.write({'state_message': state_message})
         elif status == 'PENDING':
             _logger.info('Received notification for WompiCol payment %s: setting as pending' % (self.reference))
-            res.update(state='pending')
-            self._set_transaction_pending()
-            return self.write(res)
+            self._set_pending()
+            self.write({'state_message': state_message})
         elif status in ['VOIDED', 'DECLINED', 'ERROR']:
             _logger.info('Received notification for WompiCol payment %s: setting as Cancel' % (self.reference))
-            res.update(state='cancel')
-            self._set_transaction_cancel()
-            return self.write(res)
+            self._set_canceled()
+            self.write({'state_message': state_message})
         else:
             error = 'Received unrecognized status for WompiCol payment %s: %s, setting as error' % (self.reference, status)
             _logger.info(error)
-            res.update(state='cancel', state_message=error)
-            self._set_transaction_cancel()
-            return self.write(res)
+            self._set_error(error)
+            self.write({'state_message': state_message})

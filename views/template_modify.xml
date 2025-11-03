@@ -1,7 +1,7 @@
 <odoo>
     <data>
-        <template id="assets_frontend" inherit_id="website.assets_frontend">
-            <xpath expr="script[last()]" position="after">
+        <template id="assets_frontend" inherit_id="web.assets_frontend">
+            <xpath expr="." position="inside">
                 <script type="text/javascript" src="/payment_wompicol/static/src/js/payment_form.js"></script>
             </xpath>
         </template>
