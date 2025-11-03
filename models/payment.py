@@ -26,27 +26,27 @@ class PaymentProviderWompicol(models.Model):
     code = fields.Selection(selection_add=[('wompicol', 'Wompi Colombia')], ondelete={'wompicol': 'set default'})
     wompicol_private_key = fields.Char(
             string="Wompi Colombia Private API Key",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user'
             )
     wompicol_public_key = fields.Char(
             string="Wompi Colombia Public API Key",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user'
             )
     wompicol_test_private_key = fields.Char(
             string="Wompi Colombia Test Private API Key",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user'
             )
     wompicol_test_public_key = fields.Char(
             string="Wompi Colombia Test Public API Key",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user'
             )
     wompicol_event_url = fields.Char(
             string="Wompi Colombia URL de Eventos",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user',
             readonly=True,
             store=False,
@@ -54,7 +54,7 @@ class PaymentProviderWompicol(models.Model):
             )
     wompicol_test_event_url = fields.Char(
             string="Wompi Colombia URL Test de Eventos",
-            required_if_provider='wompicol',
+            required_if_code='wompicol',
             groups='base.group_user',
             readonly=True,
             store=False,
